@@ -1,4 +1,4 @@
-This is bookmark-x.info, produced by makeinfo version 7.3 from
+This is bookmark-x.info, produced by makeinfo version 7.1 from
 bookmark-x.texi.
 
 This manual documents Bookmark-X, a fork of Drew Adams' Bookmark-X
@@ -1399,7 +1399,7 @@ File: bookmark-x.info,  Node: Highlighting,  Next: Live Preview,  Prev: Multiple
 
 Optional--requires ‘bookmark-x-lit.el’ on your ‘load-path’.  Bookmark-X
 can draw a persistent “highlight” at the position (or region, or line,
-or fringe) of a bookmark in its buffer.
+or fringe / margin) of a bookmark in its buffer.
 
 12.1 Styles
 ===========
@@ -1415,6 +1415,12 @@ Style                  Effect
 ‘line+lfringe’         Both.
 ‘rfringe’              Bitmap in the right fringe.
 ‘line+rfringe’         Both.
+‘lmargin’              Marker in the left margin (works in terminal
+                       Emacs).
+‘line+lmargin’         Marker in the left margin plus line highlight.
+‘rmargin’              Marker in the right margin (works in terminal
+                       Emacs).
+‘line+rmargin’         Marker in the right margin plus line highlight.
 
    Default style per kind (option):
 
@@ -1914,6 +1920,15 @@ Many more are listed in ‘customize-group’.
 ‘bmkx-light-left-fringe-bitmap’
 ‘bmkx-light-right-fringe-bitmap’
      Bitmaps for fringe styles.
+‘bmkx-light-left-margin-string’
+‘bmkx-light-right-margin-string’
+     Margin marker strings.
+‘bmkx-light-margin-autonamed’
+‘bmkx-light-margin-non-autonamed’
+     Faces used by margin styles.
+‘bmkx-light-fringe-to-margin-fallback’
+     Non-nil means fringe styles fall back to the matching margin styles
+     on frames that cannot render fringes.
 ‘bmkx-light-priorities’
      Overlay z-order.
 ‘bmkx-light-threshold’
@@ -2213,28 +2228,33 @@ Variable Index
 * Menu:
 
 * bmkx-annotation-modes-inherit-from:    Customization.       (line  41)
-* bmkx-auto-light-when-jump:             Customization.       (line 101)
-* bmkx-auto-light-when-set:              Customization.       (line 100)
+* bmkx-auto-light-when-jump:             Customization.       (line 110)
+* bmkx-auto-light-when-set:              Customization.       (line 109)
 * bmkx-autotemp-bookmark-predicates:     Temporary Bookmarks. (line  38)
 * bmkx-bmenu-commands-file:              Customization.       (line  58)
 * bmkx-bmenu-state-file:                 Customization.       (line  56)
 * bmkx-bookmark-map-prefix-keys:         Prefix Keys.         (line  25)
 * bmkx-count-multi-mods-as-one-flag:     Customization.       (line  19)
-* bmkx-highlight-on-jump-flag:           Highlighting.        (line  69)
-* bmkx-highlight-on-jump-flag <1>:       Customization.       (line 106)
+* bmkx-highlight-on-jump-flag:           Highlighting.        (line  75)
+* bmkx-highlight-on-jump-flag <1>:       Customization.       (line 115)
 * bmkx-jump-map-prefix-keys:             Prefix Keys.         (line  25)
 * bmkx-jump-other-window-map-prefix-keys: Prefix Keys.        (line  25)
 * bmkx-last-as-first-bookmark-file:      Multiple Bookmark Files.
                                                               (line  52)
 * bmkx-last-as-first-bookmark-file <1>:  Customization.       (line  65)
+* bmkx-light-fringe-to-margin-fallback:  Customization.       (line 102)
 * bmkx-light-left-fringe-bitmap:         Customization.       (line  93)
-* bmkx-light-priorities:                 Customization.       (line  96)
+* bmkx-light-left-margin-string:         Customization.       (line  96)
+* bmkx-light-margin-autonamed:           Customization.       (line  99)
+* bmkx-light-margin-non-autonamed:       Customization.       (line 100)
+* bmkx-light-priorities:                 Customization.       (line 105)
 * bmkx-light-right-fringe-bitmap:        Customization.       (line  94)
+* bmkx-light-right-margin-string:        Customization.       (line  97)
 * bmkx-light-style-autonamed:            Customization.       (line  88)
 * bmkx-light-style-autonamed-region:     Customization.       (line  90)
 * bmkx-light-style-non-autonamed:        Customization.       (line  89)
 * bmkx-light-style-non-autonamed-region: Customization.       (line  91)
-* bmkx-light-threshold:                  Customization.       (line  98)
+* bmkx-light-threshold:                  Customization.       (line 107)
 * bmkx-list-preview-display-action:      Live Preview.        (line  23)
 * bmkx-list-preview-display-action <1>:  Customization.       (line  82)
 * bmkx-new-bookmark-default-names:       Customization.       (line  13)
@@ -2246,7 +2266,7 @@ Variable Index
 * bmkx-sort-comparer:                    Customization.       (line  47)
 * bmkx-sort-orders-for-cycling-alist:    Customization.       (line  50)
 * bmkx-tags-for-completion:              Customization.       (line  31)
-* bmkx-tooltip-content-function:         Customization.       (line 103)
+* bmkx-tooltip-content-function:         Customization.       (line 112)
 * bookmark-automatically-show-annotations: Customization.     (line  38)
 * bookmark-save-flag:                    Customization.       (line  68)
 * bookmark-version-control:              Customization.       (line  72)
@@ -2267,7 +2287,7 @@ Concept Index
 * annotations:                           Annotations.         (line   6)
 * autofile:                              Bookmark Types.      (line  32)
 * automatic bookmarking:                 Automatic Bookmarking.
-                                                              (line   6)
+                                                              (line   5)
 * autonamed bookmarks:                   Autonamed Bookmarks. (line   6)
 * bmkx-bmenu-filename-style:             The Bmkx List Buffer.
                                                               (line  36)
@@ -2415,6 +2435,7 @@ Concept Index
 * x versus D:                            The Bmkx List Buffer.
                                                               (line 155)
 
+
 
 Tag Table:
 Node: Top675
@@ -2432,26 +2453,25 @@ Node: Tags51854
 Node: Annotations56902
 Node: Multiple Bookmark Files59465
 Node: Highlighting62160
-Node: Live Preview65364
-Node: Casual Integration67232
-Node: Cycling68370
-Node: Automatic Bookmarking70092
-Node: Autonamed Bookmarks71697
-Node: Temporary Bookmarks73355
-Node: Bookmark Records75285
-Ref: Round Trip Caveat77625
-Node: Customization79502
-Node: Migration83237
-Node: GNU GPL93284
-Node: Key Index94119
-Node: Command Index94231
-Node: Variable Index95165
-Node: Concept Index98087
+Node: Live Preview65729
+Node: Casual Integration67597
+Node: Cycling68735
+Node: Automatic Bookmarking70457
+Node: Autonamed Bookmarks72062
+Node: Temporary Bookmarks73720
+Node: Bookmark Records75650
+Ref: Round Trip Caveat77990
+Node: Customization79867
+Node: Migration83968
+Node: GNU GPL94015
+Node: Key Index94850
+Node: Command Index94962
+Node: Variable Index95896
+Node: Concept Index99183
 
 End Tag Table
 
 
 Local Variables:
 coding: utf-8
-Info-documentlanguage: en
 End:

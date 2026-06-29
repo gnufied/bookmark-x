@@ -15,6 +15,14 @@
        (progn ,@body)
      (ert-skip "bookmark-x-lit not loaded")))
 
+(defmacro bmkx-test-with-lit-fixture (buf text &rest body)
+  "Run BODY in a clean bookmark fixture buffer, if highlighting is available."
+  (declare (indent 2) (debug (symbolp form body)))
+  `(bmkx-test-skip-unless-lit
+     (bmkx-test-with-clean-bookmarks
+       (bmkx-test-with-fixture-buffer ,buf ,text
+         ,@body))))
+
 
 (defun bmkx-test--overlays-for-bookmark (file name)
   "Return all `bookmark-plus' overlays in FILE's buffer tagged with NAME."
@@ -27,6 +35,13 @@
                 (consp bmk)
                 (equal name (car bmk)))))
        (overlays-in (point-min) (point-max))))))
+
+(defun bmkx-test--margin-display-side (string)
+  "Return the margin side encoded by STRING's `display' property."
+  (let* ((display  (and string  (get-text-property 0 'display string)))
+        (head     (car-safe display)))
+    (cond ((memq head '(left-margin right-margin)) head)
+         ((and (consp head)  (eq 'margin (car head))) (cadr head)))))
 
 (ert-deftest bmkx-test-highlight/light-adds-overlay ()
   "Lighting a bookmark adds at least one overlay in the destination buffer."
@@ -49,6 +64,22 @@
           (should     (bmkx-test--overlays-for-bookmark file "lit-rm"))
           (bmkx-unlight-bookmark "lit-rm")
           (should-not (bmkx-test--overlays-for-bookmark file "lit-rm")))))))
+
+(ert-deftest bmkx-test-highlight/delete-removes-overlay ()
+  "Deleting a bookmark with `bmkx-delete' removes its overlay."
+  (bmkx-test-skip-unless-lit
+    (bmkx-test-with-clean-bookmarks
+      (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
+        (let ((file (buffer-file-name buf)))
+          (bmkx-test--make-bookmark "lit-stale" buf 7)
+          (bmkx-light-bookmark "lit-stale" 'bol)
+          (should (bmkx-test--overlays-for-bookmark file "lit-stale"))
+          (bmkx-delete "lit-stale")
+          (should-not (bmkx-test--overlays-for-bookmark file "lit-stale")))))))
+
+(ert-deftest bmkx-test-highlight/delete-key-invokes-bmkx-delete ()
+  "Bookmark-X binds `d' in `bookmark-map' to `bmkx-delete'."
+  (should (eq (lookup-key bookmark-map "d") 'bmkx-delete)))
 
 (ert-deftest bmkx-test-highlight/light-records-style-override ()
   "Setting a per-bookmark lighting style stores a `lighting' property."
@@ -87,98 +118,91 @@
 
 (ert-deftest bmkx-test-highlight/margin-style-sets-margin-display ()
   "Margin-style overlay `before-string' carries a `left-margin' display spec."
-  (bmkx-test-skip-unless-lit
-    (bmkx-test-with-clean-bookmarks
-      (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
-        (let* ((file (buffer-file-name buf)))
-          (bmkx-test--make-bookmark "margin-disp" buf 7)
-          (bmkx-light-bookmark "margin-disp" 'lmargin nil)
-          (let ((ovs (bmkx-test--overlays-for-bookmark file "margin-disp")))
-            (should ovs)
-            (let ((bs (overlay-get (car (last ovs)) 'before-string)))
-              (should bs)
-              (should (eq 'left-margin
-                          (car-safe (get-text-property 0 'display bs)))))))))))
+  (bmkx-test-with-lit-fixture buf "alpha beta gamma"
+    (let* ((file (buffer-file-name buf))
+           ovs
+           bs)
+      (bmkx-test--make-bookmark "margin-disp" buf 7)
+      (bmkx-light-bookmark "margin-disp" 'lmargin nil)
+      (setq ovs  (bmkx-test--overlays-for-bookmark file "margin-disp")
+            bs   (and ovs  (overlay-get (car (last ovs)) 'before-string)))
+      (should ovs)
+      (should bs)
+      (should (eq 'left-margin (bmkx-test--margin-display-side bs))))))
 
 (ert-deftest bmkx-test-highlight/line+margin-applies-line-face ()
   "`line+lmargin' style applies a line face, unlike plain `lmargin'."
-  (bmkx-test-skip-unless-lit
-    (bmkx-test-with-clean-bookmarks
-      (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
-        (let ((file (buffer-file-name buf)))
-          (bmkx-test--make-bookmark "lmargin-line" buf 7)
-          (bmkx-light-bookmark "lmargin-line" 'line+lmargin nil)
-          (let* ((ovs (bmkx-test--overlays-for-bookmark file "lmargin-line"))
-                 (ov  (car (last ovs))))
-            (should ovs)
-            (should (overlay-get ov 'face))
-            (should (eq 'left-margin
-                        (car-safe (get-text-property
-                                   0 'display (overlay-get ov 'before-string)))))))))))
+  (bmkx-test-with-lit-fixture buf "alpha beta gamma"
+    (let* ((file (buffer-file-name buf))
+           ovs
+           ov
+           side)
+      (bmkx-test--make-bookmark "lmargin-line" buf 7)
+      (bmkx-light-bookmark "lmargin-line" 'line+lmargin nil)
+      (setq ovs  (bmkx-test--overlays-for-bookmark file "lmargin-line")
+            ov   (and ovs  (car (last ovs)))
+            side (and ov   (bmkx-test--margin-display-side
+                            (overlay-get ov 'before-string))))
+      (should ovs)
+      (should (overlay-get ov 'face))
+      (should (eq 'left-margin side)))))
 
 (ert-deftest bmkx-test-highlight/fringe-fallback-in-tty ()
   "Fringe styles fall back to margin on a non-graphic display."
-  (bmkx-test-skip-unless-lit
-    (bmkx-test-with-clean-bookmarks
-      (let ((bmkx-light-fringe-to-margin-fallback t))
-        (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
-          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
-            (let ((file (buffer-file-name buf)))
-              (bmkx-test--make-bookmark "fallback-tty" buf 7)
-              (bmkx-light-bookmark "fallback-tty" 'lfringe nil)
-              (let* ((ovs (bmkx-test--overlays-for-bookmark file "fallback-tty"))
-                     (ov  (car (last ovs))))
-                (should ovs)
-                (let ((bs (overlay-get ov 'before-string)))
-                  (should bs)
-                  (let ((dsp (get-text-property 0 'display bs)))
-                    (should (eq 'left-margin (car-safe dsp)))
-                    (should-not (eq 'left-fringe (car-safe dsp)))))))))))))
+  (bmkx-test-with-lit-fixture buf "alpha beta gamma"
+    (let ((bmkx-light-fringe-to-margin-fallback t)
+          ovs
+          ov
+          bs)
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
+        (bmkx-test--make-bookmark "fallback-tty" buf 7)
+        (bmkx-light-bookmark "fallback-tty" 'lfringe nil)
+        (setq ovs  (bmkx-test--overlays-for-bookmark (buffer-file-name buf) "fallback-tty")
+              ov   (and ovs  (car (last ovs)))
+              bs   (and ov   (overlay-get ov 'before-string))))
+      (should ovs)
+      (should bs)
+      (should (eq 'left-margin (bmkx-test--margin-display-side bs))))))
 
 (ert-deftest bmkx-test-highlight/fringe-no-fallback-when-disabled ()
   "Fringe styles do NOT fall back when `bmkx-light-fringe-to-margin-fallback' is nil."
-  (bmkx-test-skip-unless-lit
-    (bmkx-test-with-clean-bookmarks
-      (let ((bmkx-light-fringe-to-margin-fallback nil))
-        (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
-          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
-            (let ((file (buffer-file-name buf)))
-              (bmkx-test--make-bookmark "no-fallback" buf 7)
-              (bmkx-light-bookmark "no-fallback" 'lfringe nil)
-              (let* ((ovs (bmkx-test--overlays-for-bookmark file "no-fallback"))
-                     (ov  (car (last ovs))))
-                (should ovs)
-                (let ((bs (overlay-get ov 'before-string)))
-                  (should bs)
-                  (let ((dsp (get-text-property 0 'display bs)))
-                    (should (eq 'left-fringe (car-safe dsp)))))))))))))
+  (bmkx-test-with-lit-fixture buf "alpha beta gamma"
+    (let ((bmkx-light-fringe-to-margin-fallback nil)
+          ovs
+          ov
+          bs)
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
+        (bmkx-test--make-bookmark "no-fallback" buf 7)
+        (bmkx-light-bookmark "no-fallback" 'lfringe nil)
+        (setq ovs  (bmkx-test--overlays-for-bookmark (buffer-file-name buf) "no-fallback")
+              ov   (and ovs  (car (last ovs)))
+              bs   (and ov   (overlay-get ov 'before-string))))
+      (should ovs)
+      (should bs)
+      (should (eq 'left-fringe
+                  (car-safe (get-text-property 0 'display bs)))))))
 
 (ert-deftest bmkx-test-highlight/margin-fallback-preserves-stored-style ()
   "Fallback does not mutate the bookmark's stored `lighting' property."
-  (bmkx-test-skip-unless-lit
-    (bmkx-test-with-clean-bookmarks
-      (let ((bmkx-light-fringe-to-margin-fallback t))
-        (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
-          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
-            (let ((file (buffer-file-name buf)))
-              (bmkx-test--make-bookmark "stored-style" buf 7)
-              (bmkx-set-lighting-for-bookmark "stored-style" 'lfringe nil nil)
-              (bmkx-light-bookmark "stored-style" nil)
-              (let ((rec (bmkx-get-bookmark "stored-style")))
-                (should rec)
-                (should (eq 'lfringe (bmkx-lighting-style rec)))))))))))
+  (bmkx-test-with-lit-fixture buf "alpha beta gamma"
+    (let ((bmkx-light-fringe-to-margin-fallback t))
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
+        (bmkx-test--make-bookmark "stored-style" buf 7)
+        (bmkx-set-lighting-for-bookmark "stored-style" 'lfringe nil nil)
+        (bmkx-light-bookmark "stored-style" nil))
+      (let ((rec (bmkx-get-bookmark "stored-style")))
+        (should rec)
+        (should (eq 'lfringe (bmkx-lighting-style rec)))))))
 
 (ert-deftest bmkx-test-highlight/margin-sets-margin-width ()
   "Lighting a margin-style bookmark sets `left-margin-width' to ≥ 1."
-  (bmkx-test-skip-unless-lit
-    (bmkx-test-with-clean-bookmarks
-      (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
-        (with-current-buffer buf
-          (setq left-margin-width 0))
-        (bmkx-test--make-bookmark "margin-width" buf 7)
-        (bmkx-light-bookmark "margin-width" 'lmargin nil)
-        (with-current-buffer buf
-          (should (>= left-margin-width 1)))))))
+  (bmkx-test-with-lit-fixture buf "alpha beta gamma"
+    (with-current-buffer buf
+      (setq left-margin-width 0))
+    (bmkx-test--make-bookmark "margin-width" buf 7)
+    (bmkx-light-bookmark "margin-width" 'lmargin nil)
+    (with-current-buffer buf
+      (should (>= left-margin-width 1)))))
 
 (ert-deftest bmkx-test-highlight/margin-refreshes-correct-window ()
   "Lighting a margin bookmark from another window refreshes the file window.
@@ -248,22 +272,20 @@ window, not the selected window."
 Regression test for the face-skip guard: when a fringe style falls back
 to a margin style, the line face must still be applied (because the
 effective style `line+rmargin' is NOT in `bmkx-light--no-face-styles')."
-  (bmkx-test-skip-unless-lit
-    (bmkx-test-with-clean-bookmarks
-      (let ((bmkx-light-fringe-to-margin-fallback t))
-        (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
-          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
-            (let ((file (buffer-file-name buf)))
-              (bmkx-test--make-bookmark "eff-face" buf 7)
-              (bmkx-light-bookmark "eff-face" 'line+rfringe nil)
-              (let* ((ovs (bmkx-test--overlays-for-bookmark file "eff-face"))
-                     (ov  (car (last ovs))))
-                (should ovs)
-                ;; The overlay should have a line face applied.
-                (should (overlay-get ov 'face))
-                ;; And the before-string should carry a right-margin display.
-                (let ((dsp (get-text-property 0 'display (overlay-get ov 'before-string))))
-                  (should (eq 'right-margin (car-safe dsp))))))))))))
+  (bmkx-test-with-lit-fixture buf "alpha beta gamma"
+    (let ((bmkx-light-fringe-to-margin-fallback t)
+          ovs
+          ov)
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
+        (bmkx-test--make-bookmark "eff-face" buf 7)
+        (bmkx-light-bookmark "eff-face" 'line+rfringe nil)
+        (setq ovs  (bmkx-test--overlays-for-bookmark (buffer-file-name buf) "eff-face")
+              ov   (and ovs  (car (last ovs)))))
+      (should ovs)
+      (should (overlay-get ov 'face))
+      (should (eq 'right-margin
+                  (bmkx-test--margin-display-side
+                   (overlay-get ov 'before-string)))))))
 
 
 (provide 'bmkx-test-highlight)

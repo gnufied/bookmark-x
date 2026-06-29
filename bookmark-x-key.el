@@ -217,6 +217,7 @@ there are such bookmarks can take a little time."
 (define-key bookmark-map "K"      'bmkx-set-desktop-bookmark) ; `C-x x K' (also `C-x r K', `C-x x c K')
 (define-key bookmark-map "L"      'bmkx-switch-bookmark-file-create)                  ; `C-x x L'
 (define-key bookmark-map (kbd "C-l")   'bmkx-switch-to-bookmark-file-this-file/buffer)     ; `C-x x C-l'
+(define-key bookmark-map "d"      'bmkx-delete)                                      ; `C-x x d'
 (define-key bookmark-map "m"      'bmkx-bookmark-set-confirm-overwrite)               ; `C-x x m'
 (define-key bookmark-map "N"      'bmkx-navlist-bmenu-list)                           ; `C-x x N'
 (define-key bookmark-map "o"      'bmkx-jump-other-window)           ; `C-x x o' (also `C-x 4 j j')

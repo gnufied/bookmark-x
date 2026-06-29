@@ -1688,6 +1688,21 @@ AUTONAMEDP: non-nil means use face `bmkx-light-fringe-autonamed'.
                        fringe-string)
     fringe-string))
 
+(defun bmkx--margin-width (side)
+  "Return the width needed to display SIDE's margin marker."
+  (max 1 (string-width (if (eq side 'right)
+                           bmkx-light-right-margin-string
+                         bmkx-light-left-margin-string))))
+
+(defun bmkx--margin-display-side (string)
+  "Return the margin side encoded by STRING's `display' property, or nil."
+  (let* ((display  (and string  (get-text-property 0 'display string)))
+         (head     (car-safe display)))
+    (cond ((memq head '(left-margin right-margin)) head)
+          ((and (consp head)  (eq 'margin (car head))
+                (memq (cadr head) '(left-margin right-margin)))
+           (cadr head)))))
+
 (defun bmkx--ensure-margin-width (buffer &optional right-side-p)
   "Ensure margin width is non-zero in BUFFER for margin highlighting.
 Saves the prior values before first change so they can be restored
@@ -1703,20 +1718,22 @@ updated; the next window to display BUFFER will pick up the margin."
     (unless bmkx--saved-margin-widths
       (setq bmkx--saved-margin-widths
             (cons left-margin-width right-margin-width)))
-    (let ((var (if right-side-p 'right-margin-width 'left-margin-width)))
-      (when (eq 0 (symbol-value var))
-        (set var 1)
+    (let ((var            (if right-side-p 'right-margin-width 'left-margin-width))
+          (required-width (bmkx--margin-width (if right-side-p 'right 'left))))
+      (when (< (symbol-value var) required-width)
+        (set var required-width)
         (bmkx--refresh-windows-for-buffer buffer)))))
 
 (defun bmkx--refresh-windows-for-buffer (buffer)
   "Refresh every live window displaying BUFFER so margin changes show.
-Calls `set-window-buffer' on each window showing BUFFER (on all
-frames), which is the reliable way to make Emacs recompute the
-window's margins after `left-margin-width'/`right-margin-width' change.
-Does NOT touch windows displaying other buffers, so the user's
-current window layout is preserved."
-  (dolist (win (get-buffer-window-list buffer 0 t))
-    (set-window-buffer win buffer)))
+Apply BUFFER's current `left-margin-width' and `right-margin-width' to
+each window showing it (on all frames), without touching windows that
+display other buffers."
+  (when (and buffer  (buffer-live-p buffer))
+    (with-current-buffer buffer
+      (dolist (win (get-buffer-window-list buffer 0 t))
+        (set-window-margins win left-margin-width right-margin-width))
+      (redisplay t))))
 
 (defun bmkx--maybe-restore-margin-widths (buffer)
   "Restore `left-margin-width' and `right-margin-width' in BUFFER.
@@ -1731,10 +1748,8 @@ Call this after removing the last margin-styled overlay in BUFFER."
           (dolist (ov max-ovs)
             (when (and (eq buffer (overlay-buffer ov))
                        (overlay-get ov 'before-string))
-              (let ((display  (get-text-property 0 'display
-                                                 (overlay-get ov 'before-string))))
-                (when (memq (car-safe display) '(left-margin right-margin))
-                  (setq margin-p t)))))
+              (when (bmkx--margin-display-side (overlay-get ov 'before-string))
+                (setq margin-p t))))
           (unless margin-p
             (setq left-margin-width  (car bmkx--saved-margin-widths)
                   right-margin-width (cdr bmkx--saved-margin-widths)
@@ -1747,21 +1762,16 @@ Call this after removing the last margin-styled overlay in BUFFER."
 If SIDE is `right' then use the right margin, otherwise left.
 AUTONAMEDP: non-nil means use face `bmkx-light-margin-autonamed'.
             nil means use face `bmkx-light-margin-non-autonamed'."
-  (let* ((margin-string  (copy-sequence
-                          (if (eq side 'right)
-                              bmkx-light-right-margin-string
-                            bmkx-light-left-margin-string))))
-    (put-text-property 0         (length margin-string)
-                       'display  (if (eq side 'right)
-                                     (list 'right-margin margin-string)
-                                   (list 'left-margin margin-string))
-                       margin-string)
-    (put-text-property 0         (length margin-string)
-                       'face     (if autonamedp
-                                     'bmkx-light-margin-autonamed
-                                   'bmkx-light-margin-non-autonamed)
-                       margin-string)
-    margin-string))
+  (let* ((indicator  (copy-sequence (if (eq side 'right)
+                                       bmkx-light-right-margin-string
+                                     bmkx-light-left-margin-string)))
+         (face       (if autonamedp
+                        'bmkx-light-margin-autonamed
+                      'bmkx-light-margin-non-autonamed)))
+    (put-text-property 0 (length indicator) 'face face indicator)
+    (propertize " "
+               'display `((margin ,(if (eq side 'right) 'right-margin 'left-margin))
+                          ,indicator))))
 
 (defun bmkx-make/move-margin (side pos autonamedp &optional overlay linep)
   "Return an overlay that uses the margin.

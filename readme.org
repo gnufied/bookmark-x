@@ -1406,7 +1406,7 @@ Elisp / Emacs / ... manuals" log.  Sort by =s d= (last access) or
 :END:
 
 Bookmark-X can draw a persistent /highlight/ at the position (or
-region, or line, or fringe) of a bookmark in its buffer.
+region, or line, or fringe / margin) of a bookmark in its buffer.
 
 ** Styles
 
@@ -1420,6 +1420,10 @@ region, or line, or fringe) of a bookmark in its buffer.
 | =Left Fringe + Line=   | Both.                                            |
 | =Right Fringe=         | Bitmap in the right fringe.                      |
 | =Right Fringe + Line=  | Both.                                            |
+| =Left Margin=          | Marker in the left margin (works in terminal Emacs). |
+| =Left Margin + Line=   | Marker in the left margin plus line highlight.   |
+| =Right Margin=         | Marker in the right margin (works in terminal Emacs). |
+| =Right Margin + Line=  | Marker in the right margin plus line highlight.  |
 
 Default style and face per kind:
 
@@ -1435,8 +1439,19 @@ Default style and face per kind:
 | =bmkx-light-non-autonamed-region= (face)     | distinct color        |
 | =bmkx-light-left-fringe-bitmap=              | =left-triangle=        |
 | =bmkx-light-right-fringe-bitmap=             | =right-triangle=       |
+| =bmkx-light-left-margin-string=              | =>=                    |
+| =bmkx-light-right-margin-string=             | =<=                    |
+| =bmkx-light-margin-autonamed= (face)         | distinct color        |
+| =bmkx-light-margin-non-autonamed= (face)     | distinct color        |
+| =bmkx-light-fringe-to-margin-fallback=       | =t=                    |
 | =bmkx-light-priorities=                      | overlay z-order        |
 | =bmkx-light-threshold=                       | =100000= (max bookmarks to highlight) |
+
+On terminal Emacs, the fringe styles automatically fall back to the
+matching margin styles when =bmkx-light-fringe-to-margin-fallback= is
+non-nil.  Margin markers use the same =display= form as =git-gutter=
+and =dape=, so only the margin marker is painted; the buffer text does
+not shift horizontally on the marked line.
 
 ** Per-bookmark overrides
 

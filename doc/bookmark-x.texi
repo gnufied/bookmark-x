@@ -1493,7 +1493,7 @@ independent thereafter.
 
 Optional---requires @file{bookmark-x-lit.el} on your @code{load-path}.
 Bookmark-X can draw a persistent @dfn{highlight} at the position (or
-region, or line, or fringe) of a bookmark in its buffer.
+region, or line, or fringe / margin) of a bookmark in its buffer.
 
 @section Styles
 
@@ -1507,6 +1507,10 @@ region, or line, or fringe) of a bookmark in its buffer.
 @item @code{line+lfringe}           @tab Both.
 @item @code{rfringe}                @tab Bitmap in the right fringe.
 @item @code{line+rfringe}           @tab Both.
+@item @code{lmargin}                @tab Marker in the left margin (works in terminal Emacs).
+@item @code{line+lmargin}           @tab Marker in the left margin plus line highlight.
+@item @code{rmargin}                @tab Marker in the right margin (works in terminal Emacs).
+@item @code{line+rmargin}           @tab Marker in the right margin plus line highlight.
 @end multitable
 
 Default style per kind (option):
@@ -2046,6 +2050,15 @@ Per-kind default highlighting style.
 @item bmkx-light-left-fringe-bitmap
 @itemx bmkx-light-right-fringe-bitmap
 Bitmaps for fringe styles.
+@item bmkx-light-left-margin-string
+@itemx bmkx-light-right-margin-string
+Margin marker strings.
+@item bmkx-light-margin-autonamed
+@itemx bmkx-light-margin-non-autonamed
+Faces used by margin styles.
+@item bmkx-light-fringe-to-margin-fallback
+Non-nil means fringe styles fall back to the matching margin styles on
+frames that cannot render fringes.
 @item bmkx-light-priorities
 Overlay z-order.
 @item bmkx-light-threshold
