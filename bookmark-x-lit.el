@@ -495,6 +495,12 @@ To prevent showing any tooltip you can use a function, such as
 Buffer-local; restored when the last margin-styled overlay is removed.")
 (make-variable-buffer-local 'bmkx--saved-margin-widths)
 
+(defvar bmkx--saved-window-margins nil
+  "Alist of saved window margins for the current buffer.
+Each element is (WINDOW . (LEFT . RIGHT)), capturing `window-margins'
+before Bookmark-X widened them for margin highlighting.")
+(make-variable-buffer-local 'bmkx--saved-window-margins)
+
 
 ;;(@* "Functions")
 ;;; Functions --------------------------------------------------------
@@ -1694,6 +1700,10 @@ AUTONAMEDP: non-nil means use face `bmkx-light-fringe-autonamed'.
                            bmkx-light-right-margin-string
                          bmkx-light-left-margin-string))))
 
+(defun bmkx--margin-side-symbol (side)
+  "Return the display margin symbol corresponding to SIDE."
+  (if (eq side 'right) 'right-margin 'left-margin))
+
 (defun bmkx--margin-display-side (string)
   "Return the margin side encoded by STRING's `display' property, or nil."
   (let* ((display  (and string  (get-text-property 0 'display string)))
@@ -1703,12 +1713,45 @@ AUTONAMEDP: non-nil means use face `bmkx-light-fringe-autonamed'.
                 (memq (cadr head) '(left-margin right-margin)))
            (cadr head)))))
 
-(defun bmkx--ensure-margin-width (buffer &optional right-side-p)
+(defun bmkx--margin-display-width (string)
+  "Return the display width contributed by STRING in a margin, or 0."
+  (let* ((display  (and string  (get-text-property 0 'display string)))
+         (head     (car-safe display))
+         (payload  (cond ((memq head '(left-margin right-margin)) (cadr display))
+                         ((and (consp head)  (eq 'margin (car head))) (cadr display)))))
+    (if (stringp payload) (string-width payload) 0)))
+
+(defun bmkx--current-window-margin (window side)
+  "Return WINDOW's current margin width for SIDE."
+  (let ((margins  (window-margins window)))
+    (or (if (eq side 'right) (cdr margins) (car margins)) 0)))
+
+(defun bmkx--save-window-margins (buffer)
+  "Remember the current window margins for live windows showing BUFFER."
+  (with-current-buffer buffer
+    (unless bmkx--saved-window-margins
+      (setq bmkx--saved-window-margins
+            (mapcar (lambda (win) (cons win (window-margins win)))
+                    (get-buffer-window-list buffer 0 t))))))
+
+(defun bmkx--needed-margin-width (side pos)
+  "Return the total width needed for all SIDE margin markers on POS's line."
+  (let ((line-beg      (save-excursion (goto-char pos) (line-beginning-position)))
+        (margin-side   (bmkx--margin-side-symbol side))
+        (required      0))
+    (dolist (ov  (overlays-in line-beg (min (1+ line-beg) (point-max))))
+      (let ((before-string  (overlay-get ov 'before-string)))
+        (when (eq margin-side (bmkx--margin-display-side before-string))
+          (setq required  (+ required (bmkx--margin-display-width before-string))))))
+    (max required (bmkx--margin-width side))))
+
+(defun bmkx--ensure-margin-width (buffer side pos)
   "Ensure margin width is non-zero in BUFFER for margin highlighting.
 Saves the prior values before first change so they can be restored
 by `bmkx--maybe-restore-margin-widths'.
-If RIGHT-SIDE-P is non-nil, ensure `right-margin-width';
-otherwise ensure `left-margin-width'.
+SIDE is the margin side symbol, `left' or `right'.  POS is the
+bookmark position used to compute the total margin width needed on
+that line, including markers from other packages.
 
 Refreshes every live window currently displaying BUFFER (across all
 frames) so the new margin width takes effect immediately.  If BUFFER
@@ -1718,11 +1761,20 @@ updated; the next window to display BUFFER will pick up the margin."
     (unless bmkx--saved-margin-widths
       (setq bmkx--saved-margin-widths
             (cons left-margin-width right-margin-width)))
-    (let ((var            (if right-side-p 'right-margin-width 'left-margin-width))
-          (required-width (bmkx--margin-width (if right-side-p 'right 'left))))
+    (bmkx--save-window-margins buffer)
+    (let ((var            (if (eq side 'right) 'right-margin-width 'left-margin-width))
+          (required-width (bmkx--needed-margin-width side pos)))
       (when (< (symbol-value var) required-width)
-        (set var required-width)
-        (bmkx--refresh-windows-for-buffer buffer)))))
+        (set var required-width))
+      (dolist (win (get-buffer-window-list buffer 0 t))
+        (let* ((margins    (window-margins win))
+               (left       (or (car margins) 0))
+               (right      (or (cdr margins) 0))
+               (new-left   (if (eq side 'left)  (max left required-width) left))
+               (new-right  (if (eq side 'right) (max right required-width) right)))
+          (unless (and (= left new-left)  (= right new-right))
+            (set-window-margins win new-left new-right))))
+      (redisplay t))))
 
 (defun bmkx--refresh-windows-for-buffer (buffer)
   "Refresh every live window displaying BUFFER so margin changes show.
@@ -1754,7 +1806,14 @@ Call this after removing the last margin-styled overlay in BUFFER."
             (setq left-margin-width  (car bmkx--saved-margin-widths)
                   right-margin-width (cdr bmkx--saved-margin-widths)
                   bmkx--saved-margin-widths nil)
-            (bmkx--refresh-windows-for-buffer buffer)))))))
+            (let ((saved-window-margins  bmkx--saved-window-margins))
+              (setq bmkx--saved-window-margins nil)
+              (dolist (win  (get-buffer-window-list buffer 0 t))
+                (let ((saved  (cdr (assq win saved-window-margins))))
+                  (if saved
+                      (set-window-margins win (or (car saved) 0) (or (cdr saved) 0))
+                    (set-window-margins win left-margin-width right-margin-width))))
+              (redisplay t))))))))
 
 ;; Not used for Emacs 20-21.
 (defun bmkx-margin-string (side autonamedp)
@@ -1797,7 +1856,7 @@ Non-nil LINEP means also highlight the line containing POS."
         (move-overlay ov (save-excursion (goto-char pos) (line-beginning-position 1))
                       (save-excursion (goto-char pos) (line-beginning-position 2)))
       (overlay-put ov 'face nil))
-    (bmkx--ensure-margin-width (current-buffer) (eq side 'right))
+    (bmkx--ensure-margin-width (current-buffer) side pos)
     ov))
 
 ;; This is also in `bookmark-x-bmu.el', since `bookmark-x-lit.el' is loaded first but is optional.

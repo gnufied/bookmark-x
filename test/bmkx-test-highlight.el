@@ -43,6 +43,18 @@
     (cond ((memq head '(left-margin right-margin)) head)
          ((and (consp head)  (eq 'margin (car head))) (cadr head)))))
 
+(defun bmkx-test--make-external-margin-overlay (buffer pos string)
+  "Create a non-Bookmark-X left-margin overlay in BUFFER at POS."
+  (with-current-buffer buffer
+    (let* ((line-beg  (save-excursion (goto-char pos) (line-beginning-position)))
+          (ov        (make-overlay line-beg line-beg nil 'front-advance))
+          (marker    (propertize " "
+                                 'display `((margin left-margin)
+                                            ,(propertize string 'face 'default)))))
+      (overlay-put ov 'before-string marker)
+      (overlay-put ov 'category 'bmkx-test-external-margin)
+      ov)))
+
 (ert-deftest bmkx-test-highlight/light-adds-overlay ()
   "Lighting a bookmark adds at least one overlay in the destination buffer."
   (bmkx-test-skip-unless-lit
@@ -265,6 +277,58 @@ window, not the selected window."
                 (should-not (car (window-margins file-win)))
                 ;; Selected window still shows menu-buf.
                 (should (eq (window-buffer (selected-window)) menu-buf)))
+            (when (buffer-live-p menu-buf) (kill-buffer menu-buf))))))))
+
+(ert-deftest bmkx-test-highlight/margin-coexists-with-existing-margin-symbol ()
+  "Bookmark margin highlighting widens the margin when another marker exists.
+This simulates packages such as git-gutter or dape already occupying the
+left margin on the same line."
+  (bmkx-test-skip-unless-lit
+    (bmkx-test-with-clean-bookmarks
+      (bmkx-test-with-fixture-buffer file-buf "alpha beta gamma"
+        (let ((menu-buf   (get-buffer-create "*bmkx-test-menu-sim3*"))
+              file-win menu-win external-ov)
+          (unwind-protect
+              (progn
+                (set-window-buffer (selected-window) file-buf)
+                (split-window)
+                (setq file-win (selected-window)
+                     menu-win (next-window))
+                (set-window-buffer menu-win menu-buf)
+                (select-window menu-win)
+                (setq external-ov (bmkx-test--make-external-margin-overlay file-buf 7 "+"))
+                (set-window-margins file-win 1 (cdr (window-margins file-win)))
+                (bmkx-test--make-bookmark "win-coexist" file-buf 7)
+                (bmkx-light-bookmark "win-coexist" 'lmargin nil)
+                (should (<= 2 (or (car (window-margins file-win)) 0)))
+                (should (eq (window-buffer (selected-window)) menu-buf)))
+            (when (overlayp external-ov) (delete-overlay external-ov))
+            (when (buffer-live-p menu-buf) (kill-buffer menu-buf))))))))
+
+(ert-deftest bmkx-test-highlight/margin-restore-preserves-existing-margin-symbol-width ()
+  "Removing Bookmark-X margin highlighting preserves a pre-existing margin width."
+  (bmkx-test-skip-unless-lit
+    (bmkx-test-with-clean-bookmarks
+      (bmkx-test-with-fixture-buffer file-buf "alpha beta gamma"
+        (let ((menu-buf   (get-buffer-create "*bmkx-test-menu-sim4*"))
+              file-win menu-win external-ov)
+          (unwind-protect
+              (progn
+                (set-window-buffer (selected-window) file-buf)
+                (split-window)
+                (setq file-win (selected-window)
+                     menu-win (next-window))
+                (set-window-buffer menu-win menu-buf)
+                (select-window menu-win)
+                (setq external-ov (bmkx-test--make-external-margin-overlay file-buf 7 "+"))
+                (set-window-margins file-win 1 (cdr (window-margins file-win)))
+                (bmkx-test--make-bookmark "win-coexist-restore" file-buf 7)
+                (bmkx-light-bookmark "win-coexist-restore" 'lmargin nil)
+                (should (<= 2 (or (car (window-margins file-win)) 0)))
+                (bmkx-unlight-bookmark "win-coexist-restore")
+                (should (= 1 (or (car (window-margins file-win)) 0)))
+                (should (eq (window-buffer (selected-window)) menu-buf)))
+            (when (overlayp external-ov) (delete-overlay external-ov))
             (when (buffer-live-p menu-buf) (kill-buffer menu-buf))))))))
 
 (ert-deftest bmkx-test-highlight/fringe-fallback-uses-effective-style-for-face ()
