@@ -75,6 +75,10 @@
           (bookmark-delete "lit-builtin-delete")
           (should-not (bmkx-test--overlays-for-bookmark file "lit-builtin-delete")))))))
 
+(ert-deftest bmkx-test-highlight/delete-key-invokes-bmkx-delete ()
+  "Bookmark-X binds `d' in `bookmark-map' to `bmkx-delete'."
+  (should (eq (lookup-key bookmark-map "d") 'bmkx-delete)))
+
 (ert-deftest bmkx-test-highlight/light-records-style-override ()
   "Setting a per-bookmark lighting style stores a `lighting' property."
   (bmkx-test-skip-unless-lit
