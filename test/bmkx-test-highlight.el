@@ -63,6 +63,18 @@
           (bmkx-delete "lit-stale")
           (should-not (bmkx-test--overlays-for-bookmark file "lit-stale")))))))
 
+(ert-deftest bmkx-test-highlight/bookmark-delete-removes-overlay ()
+  "The built-in `bookmark-delete' command also removes Bookmark-X overlays."
+  (bmkx-test-skip-unless-lit
+    (bmkx-test-with-clean-bookmarks
+      (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
+        (let ((file (buffer-file-name buf)))
+          (bmkx-test--make-bookmark "lit-builtin-delete" buf 7)
+          (bmkx-light-bookmark "lit-builtin-delete" 'bol)
+          (should (bmkx-test--overlays-for-bookmark file "lit-builtin-delete"))
+          (bookmark-delete "lit-builtin-delete")
+          (should-not (bmkx-test--overlays-for-bookmark file "lit-builtin-delete")))))))
+
 (ert-deftest bmkx-test-highlight/light-records-style-override ()
   "Setting a per-bookmark lighting style stores a `lighting' property."
   (bmkx-test-skip-unless-lit

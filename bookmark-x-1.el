@@ -3206,6 +3206,8 @@ In this way, you can delete multiple bookmarks."
       (unless batchp (bmkx-refresh/rebuild-menu-list))
       (bmkx-maybe-save-bookmarks))))    ; Increments `bookmark-alist-modification-count'.
 
+(advice-add 'bookmark-delete :override #'bmkx-delete)
+
 
 ;; Differences from built-in `bookmark.el':
 ;;
