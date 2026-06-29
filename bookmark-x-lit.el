@@ -966,8 +966,9 @@ Non-interactively:
          (buf              (and bmk  (bmkx-get-buffer-name bmk)))
          (autonamedp       (and bmk  (bmkx-autonamed-bookmark-p bmk)))
          (styl             (or style  (and bmk  (bmkx-light-style bmk))))
+         (eff-styl         (bmkx--maybe-fallback-style styl))
          (fac              (or face   (and bmk
-                                           (not (member styl bmkx-light--no-face-styles))
+                                           (not (member eff-styl bmkx-light--no-face-styles))
                                            (bmkx-light-face  bmk))))
          (passes-when-p    (and bmk  (or face
                                          style ; Always highlight if changed face or style.
@@ -981,8 +982,8 @@ Non-interactively:
                    (when msgp           ; No-op batch.
                      (error "Already highlighted - use prefix arg to change"))
                  (when style (bmkx-make/move-overlay-of-style style pos autonamedp bmk bmk-ov))
-                 (when (and face  (not (memq styl bmkx-light--no-face-styles)))
-                   (overlay-put bmk-ov 'face face)))
+                 (when (and face  (not (memq eff-styl bmkx-light--no-face-styles)))
+                    (overlay-put bmk-ov 'face face)))
                (when msgp (message "%sighlighted bookmark `%s'" (if bmk-ov "H" "UNh") bmk-name)))
               (passes-when-p
                (save-excursion
@@ -1011,7 +1012,7 @@ Non-interactively:
                                                         'bmkx-non-autonamed-overlays)
                                                       bmkx-light-priorities))
                                           (apply #'min (mapcar #'cdr bmkx-light-priorities))))
-                         (unless (memq styl bmkx-light--no-face-styles) (overlay-put ov 'face fac))
+                         (unless (memq eff-styl bmkx-light--no-face-styles) (overlay-put ov 'face fac))
                          (overlay-put ov 'evaporate  t)
                          (overlay-put ov 'category   'bookmark-plus)
                          (overlay-put ov 'bookmark   bmk)) ; Use full bookmark, because name can change.
@@ -1098,7 +1099,7 @@ Non-nil optional args used when called from Lisp:
         (new-auto         0)
         (new-non-auto     0)
         (nb-lit           (bmkx-number-lighted))
-        bmk bmk-name autonamedp face style pos buf bmk-ov passes-when-p)
+        bmk bmk-name autonamedp face style eff-style pos buf bmk-ov passes-when-p)
     (catch 'bmkx-light-bookmarks
       (dolist (bookmark  alist)
         (setq bmk            (bmkx-get-bookmark bookmark 'NOERROR) ; Should be a no-op.
@@ -1106,6 +1107,7 @@ Non-nil optional args used when called from Lisp:
               autonamedp     (and bmk  (bmkx-autonamed-bookmark-p bmk-name))
               face           (and bmk  (bmkx-light-face bmk))
               style          (and bmk  (bmkx-light-style bmk))
+              eff-style      (bmkx--maybe-fallback-style style)
               bmk-ov         (bmkx-overlay-of-bookmark bmk)
               passes-when-p  (and bmk  (or bmk-ov ; Always highlight if already highlighted.
                                            (bmkx-light-when bmk))))
@@ -1148,7 +1150,7 @@ Non-nil optional args used when called from Lisp:
                         (overlay-put ov 'priority ; > ediff's 100+, < isearch-overlay's 1001.
                                      (or (cdr (assoc ov-symb bmkx-light-priorities))
                                          (apply #'min (mapcar #'cdr bmkx-light-priorities))))
-                        (unless (memq style bmkx-light--no-face-styles) (overlay-put ov 'face face))
+                        (unless (memq eff-style bmkx-light--no-face-styles) (overlay-put ov 'face face))
                         (overlay-put ov 'evaporate  t)
                         (overlay-put ov 'category  'bookmark-plus)
                         (overlay-put ov 'bookmark  bmk))))))))))) ; Use full bookmark - name can change.
@@ -1691,7 +1693,12 @@ AUTONAMEDP: non-nil means use face `bmkx-light-fringe-autonamed'.
 Saves the prior values before first change so they can be restored
 by `bmkx--maybe-restore-margin-widths'.
 If RIGHT-SIDE-P is non-nil, ensure `right-margin-width';
-otherwise ensure `left-margin-width'."
+otherwise ensure `left-margin-width'.
+
+Refreshes every live window currently displaying BUFFER (across all
+frames) so the new margin width takes effect immediately.  If BUFFER
+is not displayed in any window, only the buffer-local variable is
+updated; the next window to display BUFFER will pick up the margin."
   (with-current-buffer buffer
     (unless bmkx--saved-margin-widths
       (setq bmkx--saved-margin-widths
@@ -1699,7 +1706,17 @@ otherwise ensure `left-margin-width'."
     (let ((var (if right-side-p 'right-margin-width 'left-margin-width)))
       (when (eq 0 (symbol-value var))
         (set var 1)
-        (set-window-buffer (selected-window) buffer)))))
+        (bmkx--refresh-windows-for-buffer buffer)))))
+
+(defun bmkx--refresh-windows-for-buffer (buffer)
+  "Refresh every live window displaying BUFFER so margin changes show.
+Calls `set-window-buffer' on each window showing BUFFER (on all
+frames), which is the reliable way to make Emacs recompute the
+window's margins after `left-margin-width'/`right-margin-width' change.
+Does NOT touch windows displaying other buffers, so the user's
+current window layout is preserved."
+  (dolist (win (get-buffer-window-list buffer 0 t))
+    (set-window-buffer win buffer)))
 
 (defun bmkx--maybe-restore-margin-widths (buffer)
   "Restore `left-margin-width' and `right-margin-width' in BUFFER.
@@ -1722,7 +1739,7 @@ Call this after removing the last margin-styled overlay in BUFFER."
             (setq left-margin-width  (car bmkx--saved-margin-widths)
                   right-margin-width (cdr bmkx--saved-margin-widths)
                   bmkx--saved-margin-widths nil)
-            (set-window-buffer (selected-window) buffer)))))))
+            (bmkx--refresh-windows-for-buffer buffer)))))))
 
 ;; Not used for Emacs 20-21.
 (defun bmkx-margin-string (side autonamedp)

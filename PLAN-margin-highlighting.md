@@ -156,6 +156,19 @@ on the display string and so should be in the skip list, exactly like
 the line face should still apply — matching how `line+lfringe` /
 `line+rfringe` are currently NOT in the skip list.
 
+**CRITICAL — use the post-fallback style for the skip-list check.**
+`bmkx--maybe-fallback-style` is called inside
+`bmkx-make/move-overlay-of-style`, but the face-skip guards in
+`bmkx-light-bookmark` / `bmkx-light-bookmarks` run *before* that and
+use the original stored `styl` (e.g. `line+rfringe`). When the
+fallback maps `line+rfringe` → `line+rmargin`, the guard must see the
+*effective* style (`line+rmargin`, not in the skip list) so the line
+face is applied. Compute an `eff-styl` (or `eff-style`) via
+`(bmkx--maybe-fallback-style styl)` up front and use it in the
+skip-list checks, while still passing the original `styl` to
+`bmkx-make/move-overlay-of-style` (which does its own fallback for the
+overlay construction).
+
 - [ ] `bmkx-light-bookmark` interactive spec at ~896
       (`(not (member sty '(lfringe rfringe none)))`).
 - [ ] `bmkx-light-bookmark` body at ~909
@@ -192,10 +205,31 @@ a `window-configuration-change-hook` nudge to actually take effect.
 - [ ] In `bmkx-make/move-margin`, after creating the overlay:
       if `left-margin-width` (or right) is currently 0, set it to a
       sensible default (1, or the `string-width` of
-      `bmkx-light-left-margin-string`) and call
-      `(set-window-buffer (selected-window) (current-buffer))` to
-      force a redisplay. Capture the prior 0 value in
-      `bmkx--saved-margin-widths` so it can be restored later.
+      `bmkx-light-left-margin-string`) and refresh the windows
+      actually displaying the buffer so the new margin takes effect.
+      Capture the prior 0 value in `bmkx--saved-margin-widths` so it
+      can be restored later.
+
+      **CRITICAL — do NOT use `(set-window-buffer (selected-window) ...)`:**
+      the selected window may be displaying a different buffer (e.g.
+      `*Bmkx List*` when the user invokes `bmkx-bmenu-light`).  Calling
+      `set-window-buffer` on it (a) hijacks the user's current window,
+      displacing whatever they were looking at, and (b) fails to refresh
+      the window that actually shows the file buffer, so the margin
+      never becomes visible there.  Instead, refresh every window that
+      is currently displaying the buffer:
+
+      ```elisp
+      (dolist (win (get-buffer-window-list buffer 0 t))
+        (set-window-buffer win buffer))
+      ```
+
+      Factor this into a helper `bmkx--refresh-windows-for-buffer`
+      and call it from both `bmkx--ensure-margin-width` and
+      `bmkx--maybe-restore-margin-widths`.  If the buffer is not
+      displayed in any window, only the buffer-local variable is
+      updated; the next window to display the buffer will pick up the
+      margin.
 - [ ] In `bmkx-unlight-bookmark` (or, more cleanly, in a helper run
       from `bmkx-unlight-bookmarks` and `bmkx-unlight-bookmark`):
       when removing the last margin-styled overlay in a buffer,
@@ -273,6 +307,24 @@ Add the following ERT tests inside the existing
       after the fallback fires, the bookmark's stored `lighting`
       property `:style` is still `lfringe` (i.e. the on-disk record
       was not mutated).
+- [ ] `bmkx-test-highlight/margin-refreshes-correct-window`:
+      **regression test for the `set-window-buffer` bug.** Display the
+      fixture buffer in a non-selected window (put a different buffer
+      in the selected window, simulating `*Bmkx List*`). Light a
+      `lmargin`-styled bookmark. Assert `(window-margins file-win)`
+      shows a non-zero left margin AND `(window-buffer (selected-window))`
+      is unchanged (not hijacked).
+- [ ] `bmkx-test-highlight/margin-restores-width-on-correct-window`:
+      same setup; unlight the bookmark; assert the file window's
+      margin returns to nil/0 AND the selected window is still
+      unchanged.
+- [ ] `bmkx-test-highlight/fringe-fallback-uses-effective-style-for-face`:
+      **regression test for the face-skip guard.** With fallback
+      enabled and `display-graphic-p` faked to nil, light a bookmark
+      with style `line+rfringe`; assert the overlay has a non-nil
+      `face` property (line face applied, because the effective style
+      `line+rmargin` is not in the skip list) AND the `before-string`
+      carries a `(right-margin ...)` display spec.
 
 Run with `make test`.
 
@@ -338,11 +390,22 @@ Run with `make test`.
   `bmkx-fringe-string` does. Do not rely on the overlay `face`.
 - **Margin width gotcha:** Emacs caches window margins; setting
   `left-margin-width` does not visibly take effect until the window
-  is "re-buffered". The reliable trigger is
-  `(set-window-buffer (selected-window) (current-buffer))`. An
-  alternative is `(window--resize-root-window-again (selected-window))`
-  but `set-window-buffer` is simpler and is what `display-line-numbers-mode`
-  uses internally. Test both paths if one proves flaky.
+  is "re-buffered". The reliable trigger is `set-window-buffer` — but
+  it must be called on the window(s) **actually displaying the
+  buffer**, NOT on `(selected-window)`. The selected window is
+  frequently a different buffer (e.g. `*Bmkx List*` when lighting
+  from the bookmark list); refreshing it (a) hijacks the user's
+  window and (b) leaves the file buffer's window un-refreshed, so the
+  margin never appears. Use:
+  ```elisp
+  (dolist (win (get-buffer-window-list buffer 0 t))
+    (set-window-buffer win buffer))
+  ```
+  An alternative is
+  `(window--resize-root-window-again (selected-window))` but it
+  suffers from the same selected-window assumption. `set-window-buffer`
+  on the correct windows is what `display-line-numbers-mode` does
+  internally.
 - **Multiple bookmarks on the same line:** margin markers stack
   horizontally in the left margin if multiple overlays on a line
   each set a `before-string` with a margin display spec. There may

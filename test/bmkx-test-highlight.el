@@ -180,6 +180,91 @@
         (with-current-buffer buf
           (should (>= left-margin-width 1)))))))
 
+(ert-deftest bmkx-test-highlight/margin-refreshes-correct-window ()
+  "Lighting a margin bookmark from another window refreshes the file window.
+Regression test for the `set-window-buffer (selected-window)' bug:
+when the file buffer is displayed in a window OTHER than the selected
+one, the margin width must be set on the file-buffer's window, and the
+selected window's buffer must NOT be hijacked."
+  (bmkx-test-skip-unless-lit
+    (bmkx-test-with-clean-bookmarks
+      (bmkx-test-with-fixture-buffer file-buf "alpha beta gamma"
+        (let ((menu-buf (get-buffer-create "*bmkx-test-menu-sim*"))
+              file-win menu-win)
+          (unwind-protect
+              (progn
+                ;; Display file-buf in the selected window, then split and
+                ;; put menu-buf in the selected window.  file-buf is now in
+                ;; a non-selected window.
+                (set-window-buffer (selected-window) file-buf)
+                (split-window)
+                (setq file-win (selected-window)
+                      menu-win (next-window))
+                (set-window-buffer menu-win menu-buf)
+                (select-window menu-win)
+                ;; Sanity: selected window shows menu, other shows file.
+                (should (eq (window-buffer menu-win) menu-buf))
+                (should (eq (window-buffer file-win) file-buf))
+                (should-not (eq (selected-window) file-win))
+                ;; Light a margin-style bookmark from the menu window.
+                (bmkx-test--make-bookmark "win-refresh" file-buf 7)
+                (bmkx-light-bookmark "win-refresh" 'lmargin nil)
+                ;; The file-buffer's window must now have a non-zero left margin.
+                (should (<= 1 (or (car (window-margins file-win)) 0)))
+                ;; The selected window must still show menu-buf (not hijacked).
+                (should (eq (window-buffer (selected-window)) menu-buf)))
+            (when (buffer-live-p menu-buf) (kill-buffer menu-buf))))))))
+
+(ert-deftest bmkx-test-highlight/margin-restores-width-on-correct-window ()
+  "Unlighting the last margin bookmark restores margin on the file window.
+Regression test: the restore path must also refresh the file-buffer's
+window, not the selected window."
+  (bmkx-test-skip-unless-lit
+    (bmkx-test-with-clean-bookmarks
+      (bmkx-test-with-fixture-buffer file-buf "alpha beta gamma"
+        (let ((menu-buf (get-buffer-create "*bmkx-test-menu-sim2*"))
+              file-win menu-win)
+          (unwind-protect
+              (progn
+                (set-window-buffer (selected-window) file-buf)
+                (split-window)
+                (setq file-win (selected-window)
+                      menu-win (next-window))
+                (set-window-buffer menu-win menu-buf)
+                (select-window menu-win)
+                (bmkx-test--make-bookmark "win-restore" file-buf 7)
+                (bmkx-light-bookmark "win-restore" 'lmargin nil)
+                (should (<= 1 (or (car (window-margins file-win)) 0)))
+                ;; Unlight from the menu window.
+                (bmkx-unlight-bookmark "win-restore")
+                ;; The file-buffer window's margin should be restored to 0/nil.
+                (should-not (car (window-margins file-win)))
+                ;; Selected window still shows menu-buf.
+                (should (eq (window-buffer (selected-window)) menu-buf)))
+            (when (buffer-live-p menu-buf) (kill-buffer menu-buf))))))))
+
+(ert-deftest bmkx-test-highlight/fringe-fallback-uses-effective-style-for-face ()
+  "Fallback `line+rfringe'->`line+rmargin' applies a non-fringe line face.
+Regression test for the face-skip guard: when a fringe style falls back
+to a margin style, the line face must still be applied (because the
+effective style `line+rmargin' is NOT in `bmkx-light--no-face-styles')."
+  (bmkx-test-skip-unless-lit
+    (bmkx-test-with-clean-bookmarks
+      (let ((bmkx-light-fringe-to-margin-fallback t))
+        (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
+          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _f) nil)))
+            (let ((file (buffer-file-name buf)))
+              (bmkx-test--make-bookmark "eff-face" buf 7)
+              (bmkx-light-bookmark "eff-face" 'line+rfringe nil)
+              (let* ((ovs (bmkx-test--overlays-for-bookmark file "eff-face"))
+                     (ov  (car (last ovs))))
+                (should ovs)
+                ;; The overlay should have a line face applied.
+                (should (overlay-get ov 'face))
+                ;; And the before-string should carry a right-margin display.
+                (let ((dsp (get-text-property 0 'display (overlay-get ov 'before-string))))
+                  (should (eq 'right-margin (car-safe dsp))))))))))))
+
 
 (provide 'bmkx-test-highlight)
 ;;; bmkx-test-highlight.el ends here
