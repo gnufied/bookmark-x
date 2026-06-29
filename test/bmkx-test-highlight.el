@@ -50,6 +50,19 @@
           (bmkx-unlight-bookmark "lit-rm")
           (should-not (bmkx-test--overlays-for-bookmark file "lit-rm")))))))
 
+(ert-deftest bmkx-test-highlight/delete-removes-overlay-for-replaced-record ()
+  "Deleting a bookmark removes overlays that still hold an older record cons."
+  (bmkx-test-skip-unless-lit
+    (bmkx-test-with-clean-bookmarks
+      (bmkx-test-with-fixture-buffer buf "alpha beta gamma"
+        (let ((file (buffer-file-name buf)))
+          (bmkx-test--make-bookmark "lit-stale" buf 7)
+          (bmkx-light-bookmark "lit-stale" 'bol)
+          (should (bmkx-test--overlays-for-bookmark file "lit-stale"))
+          (setq bookmark-alist  (list (copy-tree (car bookmark-alist))))
+          (bmkx-delete "lit-stale")
+          (should-not (bmkx-test--overlays-for-bookmark file "lit-stale")))))))
+
 (ert-deftest bmkx-test-highlight/light-records-style-override ()
   "Setting a per-bookmark lighting style stores a `lighting' property."
   (bmkx-test-skip-unless-lit

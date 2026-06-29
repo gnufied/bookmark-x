@@ -442,6 +442,16 @@ To prevent showing any tooltip you can use a function, such as
 ;;(@* "Functions")
 ;;; Functions --------------------------------------------------------
 
+(defun bmkx-same-bookmark-record-p (bookmark1 bookmark2)
+  "Return non-nil if BOOKMARK1 and BOOKMARK2 represent the same bookmark.
+Prefer object identity, but fall back to the stable `id' bookmark
+property when both records have one.  Overlay records can outlive a
+particular cons cell after bookmark list reloads or record replacement."
+  (or (eq bookmark1 bookmark2)
+      (let ((id1  (and (consp bookmark1)  (bookmark-prop-get bookmark1 'id)))
+            (id2  (and (consp bookmark2)  (bookmark-prop-get bookmark2 'id))))
+        (and id1  id2  (equal id1 id2)))))
+
 
 ;;(@* "Menu-List (`*-bmenu-*') Commands")
 ;;  *** Menu-List (`*-bmenu-*') Commands ***
@@ -649,7 +659,8 @@ When called from Lisp:
     (when bmk                           ; Skip bad bookmark, but not already highlighted bookmark.
       (unless (or noerrorp  (bmkx-lighted-p bmk-name)) (error "Bookmark `%s' is not highlighted" bmk-name))
       (dolist (ov  (if autonamedp bmkx-autonamed-overlays bmkx-non-autonamed-overlays))
-        (when (eq bmk (overlay-get ov 'bookmark))  (delete-overlay ov)))) ; Check full bookmark, not name.
+        (when (bmkx-same-bookmark-record-p bmk (overlay-get ov 'bookmark))
+          (delete-overlay ov))))
     (when msgp (message "UNhighlighted bookmark `%s'" bmk-name))))
 
 ;; Keep the alias for a while, in case someone has it referenced in a state file.
@@ -1480,7 +1491,8 @@ If nil, check overlays for both autonamed and non-autonamed bookmarks."
          (dolist (ov  (if overlays
                           (apply #'append (mapcar #'symbol-value overlays))
                         (append bmkx-autonamed-overlays bmkx-non-autonamed-overlays)))
-           (when (and (overlay-buffer ov)  (eq bookmark (overlay-get ov 'bookmark)))
+           (when (and (overlay-buffer ov)
+                      (bmkx-same-bookmark-record-p bookmark (overlay-get ov 'bookmark)))
              (throw 'bmkx-overlay-of-bookmark ov)))
          nil)))
 
